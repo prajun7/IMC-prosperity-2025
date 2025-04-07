@@ -15,20 +15,19 @@ class Trader:
     # EMA smoothing factor
     ALPHA = 0.3
 
-    # Parameters for new logic
-    # How many past prices to use for volatility calculation
-    VOLATILITY_WINDOW = 15
-    # How much volatility increases the spread (tune this)
+    # --- Parameters for Dynamic Spread ---
+    VOLATILITY_WINDOW = 15 # How many past prices for volatility calc
+    # How much volatility increases the spread (TUNE THIS)
     VOLATILITY_SPREAD_FACTOR = 0.3
-    # How much our position skews the price (tune this)
-    POSITION_SKEW_FACTOR = 0.04 # Scaled by position ratio
 
-
-    # Product-specific BASE parameters (spread will be dynamic)
-    # Might need tuning, especially base_spread
+    # --- Product-specific BASE parameters ---
+    # Adjusted based on historical trend observations
     PRODUCT_PARAMS = {
-        "RAINFOREST_RESIN": { "base_spread": 1.5, "volume": 10 }, # Stable, tighter base spread
+        # Stable: Tight base spread, higher volume
+        "RAINFOREST_RESIN": { "base_spread": 1.5, "volume": 10 },
+        # Volatile: Wider base spread, moderate volume
         "KELP":             { "base_spread": 2.5, "volume": 8 },
+         # Volatile/Pattern?: Wider base spread, lower volume initially
         "SQUID_INK":        { "base_spread": 3.0, "volume": 6 },
         "DEFAULT":          { "base_spread": 3.0, "volume": 5 }
     }
@@ -42,8 +41,8 @@ class Trader:
     def calculate_volatility(self, prices: List[float], window: int) -> float:
         """Calculates simple standard deviation as volatility."""
         if len(prices) < window:
-            return 0.0 # Not enough data
-        # Use the prices directly for standard deviation calculation
+            # Return a default low volatility if not enough data
+            return 0.5
         return statistics.stdev(prices[-window:])
 
     def run(self, state: TradingState):
@@ -52,7 +51,7 @@ class Trader:
         except json.JSONDecodeError:
             trader_data = {}
 
-        # Initialize persistent data structures if they don't exist
+        # Initialize persistent data structures
         if "ema_prices" not in trader_data: trader_data["ema_prices"] = {}
         if "price_history" not in trader_data: trader_data["price_history"] = {}
 
@@ -73,11 +72,10 @@ class Trader:
 
             mid_price = (best_bid + best_ask) / 2
 
-            # Update price history (used for volatility)
+            # Update price history
             if product not in trader_data["price_history"]:
                 trader_data["price_history"][product] = []
             trader_data["price_history"][product].append(mid_price)
-            # Keep history length manageable
             trader_data["price_history"][product] = trader_data["price_history"][product][-max(50, self.VOLATILITY_WINDOW):]
 
             # --- EMA Calculation ---
@@ -90,7 +88,7 @@ class Trader:
                 trader_data["ema_prices"][product] = new_ema
                 acceptable_price = new_ema
 
-            # --- Improved Market Making Logic ---
+            # --- Market Making Logic with Dynamic Spread ---
             params = self.get_product_params(product)
             base_spread = params["base_spread"]
             trade_volume = params["volume"]
@@ -107,46 +105,25 @@ class Trader:
             )
 
             # 2. Calculate Dynamic Spread
-            # Increase spread proportional to volatility
             dynamic_spread = base_spread + (volatility * self.VOLATILITY_SPREAD_FACTOR)
-            # Ensure spread is reasonable (e.g., at least 1, maybe cap max?)
-            dynamic_spread = max(1.0, dynamic_spread)
-            # Optional: Cap max spread if needed: dynamic_spread = min(dynamic_spread, base_spread * 3)
+            dynamic_spread = max(1.0, dynamic_spread) # Ensure spread is at least 1
+            # Optional Cap: dynamic_spread = min(dynamic_spread, base_spread * 3)
 
-            # 3. Calculate Inventory Skew
-            # Skew price levels based on current position ratio
-            position_ratio = current_position / position_limit if position_limit != 0 else 0
-            # Price adjustment based on skew - scaled by volatility maybe? No, keep simple first.
-            price_skew = (position_ratio * dynamic_spread * self.POSITION_SKEW_FACTOR) # Skew proportional to spread makes sense
-
-            # 4. Calculate Adjusted Buy/Sell Prices
-            # Base prices around EMA using dynamic spread
-            base_buy_price = acceptable_price - (dynamic_spread / 2)
-            base_sell_price = acceptable_price + (dynamic_spread / 2)
-
-            # Apply skew: If long (ratio>0), skew<0; If short (ratio<0), skew>0 (Error in previous thinking, need to adjust based on ratio SIGN)
-            # Let's rethink skew: If long (pos>0), we want to buy lower and sell lower (easier to sell). If short (pos<0), buy higher and sell higher.
-            # Skew factor should perhaps scale the EMA adjustment away from midprice
-            # Simpler: Shift midpoint based on skew.
-            adjusted_midpoint = acceptable_price - price_skew # If long, midpoint shifts down. If short, shifts up.
-
-            our_buy_price = math.floor(adjusted_midpoint - dynamic_spread / 2)
-            our_sell_price = math.ceil(adjusted_midpoint + dynamic_spread / 2)
-
+            # 3. Calculate Buy/Sell Prices (NO inventory skew)
+            # Place orders symmetrically around the acceptable price
+            our_buy_price = math.floor(acceptable_price - dynamic_spread / 2)
+            our_sell_price = math.ceil(acceptable_price + dynamic_spread / 2)
 
             # --- Place Orders ---
-            # Calculate volume, respecting capacity and fixed trade size
             final_buy_volume = min(trade_volume, max_buy_capacity)
             if final_buy_volume > 0 and our_buy_price < best_ask:
                 orders.append(Order(product, our_buy_price, final_buy_volume))
-                # print(f"PLACING BUY {product}: {final_buy_volume}x at {our_buy_price} (EMA:{acceptable_price:.1f}, Vol:{volatility:.1f}, Sprd:{dynamic_spread:.1f}, Skw:{price_skew:.1f})")
-
+                # print(f"PLACING BUY {product}: {final_buy_volume}x at {our_buy_price} (EMA:{acceptable_price:.1f}, Vol:{volatility:.1f}, Sprd:{dynamic_spread:.1f})")
 
             final_sell_volume = min(trade_volume, max_sell_capacity)
             if final_sell_volume > 0 and our_sell_price > best_bid:
-                orders.append(Order(product, our_sell_price, -final_sell_volume)) # Negative volume for sell
-                # print(f"PLACING SELL {product}: {final_sell_volume}x at {our_sell_price} (EMA:{acceptable_price:.1f}, Vol:{volatility:.1f}, Sprd:{dynamic_spread:.1f}, Skw:{price_skew:.1f})")
-
+                orders.append(Order(product, our_sell_price, -final_sell_volume))
+                # print(f"PLACING SELL {product}: {final_sell_volume}x at {our_sell_price} (EMA:{acceptable_price:.1f}, Vol:{volatility:.1f}, Sprd:{dynamic_spread:.1f})")
 
             result[product] = orders
 
