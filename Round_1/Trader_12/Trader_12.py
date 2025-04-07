@@ -616,6 +616,13 @@ class Trader:
             )
             trader_data["volatility"][product] = volatility
             
+            market_regime, regime_confidence = self.analyze_market_regime(
+                trader_data["price_history"][product], product
+            )
+            # Store regime info (optional, but good for logging/debugging)
+            if "market_regime" not in trader_data: trader_data["market_regime"] = {}
+            trader_data["market_regime"][product] = {"regime": market_regime, "confidence": regime_confidence}
+            
             # Detect market conditions with enhanced algorithms
             trend_direction, trend_strength = self.detect_trend(
                 trader_data["price_history"][product], product
@@ -912,3 +919,56 @@ class Trader:
             
         return regime, confidence
         
+    def adapt_to_recgime(self, product, regime, confidence):
+        """
+        Adapt trading parameters based on detected market regime
+        
+        Args:
+            product: Product identifier
+            regime: Detected market regime type
+            confidence: Confidence in the regime detection
+        """
+        if confidence < 0.6:
+            return  # Don't adapt if not confident in regime detection
+            
+        if product not in self.PRODUCT_PARAMS:
+            return
+            
+        params = self.PRODUCT_PARAMS[product]
+        
+        # Store original parameters if not already stored
+        if "original_alpha" not in params:
+            params["original_alpha"] = params["alpha"]
+        if "original_spread" not in params:
+            params["original_spread"] = params.get("spread", params.get("base_spread", 2))
+        if "original_volume_scale" not in params:
+            params["original_volume_scale"] = params["volume_scale"]
+            
+        # Adapt parameters based on regime
+        if regime == "volatile":
+            # In volatile markets: widen spreads, reduce volume, increase responsiveness
+            self.PRODUCT_PARAMS[product]["alpha"] = params["original_alpha"] * 1.3
+            self.PRODUCT_PARAMS[product]["spread"] = params["original_spread"] * 1.5
+            self.PRODUCT_PARAMS[product]["volume_scale"] = params["original_volume_scale"] * 0.7
+            self.PRODUCT_PARAMS[product]["max_position_ratio"] = 0.7
+            
+        elif regime == "trending":
+            # In trending markets: tighten spreads, increase volume, reduce responsiveness
+            self.PRODUCT_PARAMS[product]["alpha"] = params["original_alpha"] * 0.9
+            self.PRODUCT_PARAMS[product]["spread"] = params["original_spread"] * 0.8
+            self.PRODUCT_PARAMS[product]["volume_scale"] = params["original_volume_scale"] * 1.2
+            self.PRODUCT_PARAMS[product]["max_position_ratio"] = 0.95
+            
+        elif regime == "ranging":
+            # In ranging markets: optimal for market making
+            self.PRODUCT_PARAMS[product]["alpha"] = params["original_alpha"] * 1
+            self.PRODUCT_PARAMS[product]["spread"] = params["original_spread"] * 0.9
+            self.PRODUCT_PARAMS[product]["volume_scale"] = params["original_volume_scale"] * 1.1
+            self.PRODUCT_PARAMS[product]["max_position_ratio"] = 0.85
+            
+        elif regime == "mixed":
+            # In mixed/uncertain markets: return to original parameters
+            self.PRODUCT_PARAMS[product]["alpha"] = params["original_alpha"]
+            self.PRODUCT_PARAMS[product]["spread"] = params["original_spread"]
+            self.PRODUCT_PARAMS[product]["volume_scale"] = params["original_volume_scale"]
+            self.PRODUCT_PARAMS[product]["max_position_ratio"] = 0.8
