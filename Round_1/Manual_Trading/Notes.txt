@@ -1,0 +1,15 @@
+--- Best Path Found ---
+Path: SeaShells -> Snowballs -> Silicon Nuggets -> Pizzas -> Snowballs -> Silicon Nuggets -> SeaShells
+Number of Trades: 6
+Overall Conversion Factor: 1.1715
+Starting Amount: 2000.0000 SeaShells
+Best Final Amount: 2343.0820 SeaShells
+Profit/Loss: 343.0820 SeaShells
+
+--- Best Path Found ---
+Path: SeaShells -> Pizzas -> Snowballs -> Silicon Nuggets -> Pizzas -> Snowballs -> Silicon Nuggets -> Pizzas -> Snowballs -> Silicon Nuggets -> SeaShells
+Number of Trades: 10
+Overall Conversion Factor: 1.3673
+Starting Amount: 2000.0000 SeaShells
+Best Final Amount: 2734.6956 SeaShells
+Profit/Loss: 734.6956 SeaShells
