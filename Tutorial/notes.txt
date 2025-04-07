@@ -1,0 +1,17 @@
+Trader_4 performed best:
+Some notes:
+
+# EMA (Exponential Moving Average):
+This is the mathematical method used to calculate the acceptable_price.
+Instead of a simple average (where all prices count equally), an EMA gives more importance or 
+weight to the most recent prices. Market prices jump around. A simple average changes slowly. 
+The last price can be random noise.
+An EMA tries to find a balance – it smooths out the noise like an average but reacts faster 
+to real changes than a simple average.
+
+# ALPHA:
+This is the control knob for the EMA calculation. It's a number between 0 and 1 (here it's 0.3).
+It determines how much weight the EMA gives to the very latest mid_price.
+ALPHA = 0.3 means 30% weight on the new price, 70% on the previous EMA value.
+A higher ALPHA makes the EMA react faster to price changes (less smoothing). 
+A lower ALPHA makes it react slower (more smoothing).
