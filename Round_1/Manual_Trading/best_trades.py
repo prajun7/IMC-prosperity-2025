@@ -12,7 +12,7 @@ rates = {
 currencies = list(rates.keys())
 start_currency = 'SeaShells'
 initial_amount = 2000.0
-max_trades = 20 # Set a maximum number of trades to explore
+max_trades = 5 # Set a maximum number of trades to explore
 
 # List to store results: (final_factor, path_list)
 results = []
